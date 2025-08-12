@@ -1,0 +1,10 @@
+autoPOL*
+*.lnk
+*.bat
+
+*.json
+*.bin
+*.log
+
+!*.example.json
+!ffxi-login.bat

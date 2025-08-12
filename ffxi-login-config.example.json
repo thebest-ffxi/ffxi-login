@@ -1,0 +1,49 @@
+{
+  "paths": {
+    "autopol_path": "C:\\Program Files (x86)\\Windower\\autoPOL.exe",
+    "bin_files_path": "C:\\Users\\username\\Desktop\\FFXI\\login",
+    "config_files_path": "C:\\Users\\username\\Desktop\\FFXI\\login",
+    "login_bin_dest": "C:\\Users\\username\\Documents\\Games\\Steam\\steamapps\\common\\FFXINA\\SquareEnix\\PlayOnlineViewer\\usr\\all\\login_w.bin",
+    "autopol_config_dest": "C:\\Program Files (x86)\\Windower\\config.json"
+  },
+  "timing": {
+    "launch_delay": 5,
+    "bin_swap_delay": 20
+  },
+  "logging": {
+    "debug_mode": true,
+    "log_file": "ffxi-login.log"
+  },
+  "characters": [
+    {
+      "name": "mycharacter1",
+      "bin_file": "POL-chars1.bin",
+      "config_file": "autoPOL-config-1.json"
+    },
+    {
+      "name": "mycharacter2",
+      "bin_file": "POL-chars1.bin",
+      "config_file": "autoPOL-config-1.json"
+    },
+    {
+      "name": "mycharacter3",
+      "bin_file": "POL-chars1.bin",
+      "config_file": "autoPOL-config-1.json"
+    },
+    {
+      "name": "mycharacter4",
+      "bin_file": "POL-chars1.bin",
+      "config_file": "autoPOL-config-1.json"
+    },
+    {
+      "name": "mycharacter5",
+      "bin_file": "POL-chars2.bin",
+      "config_file": "autoPOL-config-2.json"
+    },
+    {
+      "name": "mycharacter6",
+      "bin_file": "POL-chars2.bin",
+      "config_file": "autoPOL-config-2.json"
+    }
+  ]
+} 
