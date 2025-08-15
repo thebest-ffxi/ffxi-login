@@ -1,237 +1,165 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM ===================================================================
+REM ================================
 REM FFXI Multi-Character Login Script
-REM ===================================================================
-REM This script automatically launches FFXI characters, detecting which
-REM ones are already running and only starting the missing ones.
-REM 
-REM Configuration is now loaded from ffxi-login-config.json
-REM See README.md for setup instructions.
-REM ===================================================================
+REM ================================
+REM This script automatically launches multiple FFXI characters, detecting which ones are already running
+REM and only starting the missing ones. It supports switching between different login credential files
+REM for different sets of characters.
 
-REM ===================================================================
-REM ADMIN PRIVILEGE CHECK AND AUTO-ELEVATION
-REM ===================================================================
-REM Check if running as administrator
+REM Check for admin privileges
 net session >nul 2>&1
-if %errorLevel% neq 0 (
+if %errorlevel% neq 0 (
     echo This script requires administrator privileges.
-    echo Attempting to restart as administrator...
-    
-    REM Use PowerShell to restart the script as admin
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    echo Requesting elevation...
+    powershell -Command "Start-Process cmd -Argument '/c \"%~f0\"' -Verb runAs"
     exit /b
 )
 
-echo Running with administrator privileges.
+echo ================================
+echo FFXI Multi-Character Login Script
+echo ================================
 echo.
 
-REM ===================================================================
-REM CONFIGURATION LOADING
-REM ===================================================================
+REM Set up variables
+set "PS_SCRIPT=%~dp0load-config.ps1"
 set "CONFIG_FILE=%~dp0ffxi-login-config.json"
 
-REM Set up basic logging before config load
+REM Initialize log file
 set "LOG_FILE=%~dp0ffxi-login.log"
-echo. > "%LOG_FILE%"
+echo [%date% %time%] Script started >> "%LOG_FILE%"
 echo Loading configuration from: %CONFIG_FILE% >> "%LOG_FILE%"
 
 REM Check if config file exists
 if not exist "%CONFIG_FILE%" (
     echo ERROR: Configuration file not found: "%CONFIG_FILE%"
-    echo Please create the configuration file. See README.md for instructions.
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    echo Please create %CONFIG_FILE% based on the example configuration.
+    pause
     exit /b 1
 )
 
-REM Load configuration using PowerShell to parse JSON
-call :LoadConfiguration
-
-REM ===================================================================
-REM LOGGING SETUP
-REM ===================================================================
-REM Set up logging based on config
-if "%DEBUG_MODE%"=="true" (
-    set "DEBUG_MODE=1"
-) else (
-    set "DEBUG_MODE=0"
-)
-
-REM Update log file path from config and restart logging
-set "LOG_FILE=%~dp0%LOG_FILE_NAME%"
-echo. > "%LOG_FILE%"
-call :LogMessage "Script started at %date% %time%"
-call :LogMessage "Configuration loaded successfully"
-
-REM ===================================================================
-REM SCRIPT START
-REM ===================================================================
-
-echo ===================================================================
-echo FFXI Multi-Character Login Script
-echo ===================================================================
-echo.
-if "%DEBUG_MODE%"=="1" echo Debug mode enabled - output will be logged to: %LOG_FILE%
-echo.
-
-call :LogMessage "Starting main script execution"
-
-REM Validate paths
-call :ValidatePaths
-if !errorlevel! neq 0 exit /b 1
-
-echo Checking currently running FFXI characters...
-echo.
-
-call :LogMessage "Starting character detection"
-
-REM Function to check running characters
-call :CheckRunningCharacters
-
-echo.
-echo Found !RUNNING_COUNT! character(s) already running.
-echo Characters to launch: !PENDING_COUNT!
-echo.
-
-call :LogMessage "Character detection complete - Running: !RUNNING_COUNT!, Pending: !PENDING_COUNT!"
-
-if !PENDING_COUNT! equ 0 (
-    echo All characters are already running!
-    call :LogMessage "All characters already running - script complete"
-    echo.
-    echo Press any key to exit...
-    pause >nul
-    exit /b 0
-)
-
-REM Group characters by bin file
-call :LogMessage "Grouping characters by bin file"
-call :GroupCharactersByBin
-
-REM Launch characters grouped by bin file
-call :LogMessage "Starting character launches"
-call :LaunchCharacterGroups
-
-echo.
-echo ===================================================================
-echo All character launches completed!
-echo ===================================================================
-call :LogMessage "Script completed successfully"
-echo.
-echo Press any key to exit...
-pause >nul
-exit /b 0
-
-REM ===================================================================
-REM FUNCTIONS
-REM ===================================================================
-
-:LoadConfiguration
-call :LogMessage "Loading configuration from JSON file"
-
-REM Use separate PowerShell script to parse JSON
-set "PS_SCRIPT=%~dp0load-config.ps1"
+REM Check if PowerShell config loader exists
 if not exist "%PS_SCRIPT%" (
-    echo ERROR: PowerShell configuration script not found: "%PS_SCRIPT%"
-    echo Please ensure load-config.ps1 is in the same directory as this script.
+    echo ERROR: PowerShell config loader not found: "%PS_SCRIPT%"
+    pause
     exit /b 1
 )
 
-REM Parse configuration and set variables
-set "IN_CHAR_LIST=0"
+echo Loading configuration...
+
+REM Initialize variables
+set "AUTOPOL_PATH="
+set "BIN_FILES_PATH="
+set "LOGIN_BIN_DEST="
+set "LAUNCH_DELAY="
+set "BIN_SWAP_DELAY="
+set "DEBUG_MODE="
+set "LOG_FILE_NAME="
 set "CHAR_LIST="
 
+REM Load configuration using PowerShell
+set "IN_CHAR_LIST=0"
 for /f "usebackq delims=" %%i in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" "%CONFIG_FILE%"`) do (
     set "LINE=%%i"
+    
     if "!LINE!"=="CHAR_LIST_START" (
         set "IN_CHAR_LIST=1"
     ) else if "!LINE!"=="CHAR_LIST_END" (
         set "IN_CHAR_LIST=0"
     ) else if "!IN_CHAR_LIST!"=="1" (
-        set "CHAR_LIST=!CHAR_LIST! !LINE!"
+        if "!CHAR_LIST!"=="" (
+            set "CHAR_LIST=!LINE!"
+        ) else (
+            set "CHAR_LIST=!CHAR_LIST! !LINE!"
+        )
     ) else (
-        set %%i
+        REM Process configuration variables
+        for /f "tokens=1,2 delims==" %%a in ("!LINE!") do (
+            set "%%a=%%b"
+        )
     )
 )
 
-REM Set full path for log file
-set "LOG_FILE=%~dp0%LOG_FILE_NAME%"
-
-call :LogMessage "Configuration variables set:"
+call :LogMessage "Configuration loaded successfully"
 call :LogMessage "  AUTOPOL_PATH=%AUTOPOL_PATH%"
 call :LogMessage "  BIN_FILES_PATH=%BIN_FILES_PATH%"
 call :LogMessage "  LOGIN_BIN_DEST=%LOGIN_BIN_DEST%"
-call :LogMessage "  WINDOWER_CONFIG_DEST=%WINDOWER_CONFIG_DEST%"
-call :LogMessage "  CONFIG_FILES_PATH=%CONFIG_FILES_PATH%"
 call :LogMessage "  LAUNCH_DELAY=%LAUNCH_DELAY%"
 call :LogMessage "  BIN_SWAP_DELAY=%BIN_SWAP_DELAY%"
 call :LogMessage "  DEBUG_MODE=%DEBUG_MODE%"
-call :LogMessage "  CHARACTER_LIST=%CHAR_LIST%"
-exit /b 0
 
-:ValidatePaths
-call :LogMessage "Validating configured paths"
-
-REM Check if autoPOL.exe exists
-call :LogMessage "Checking if autoPOL.exe exists"
+REM Validate paths
 if not exist "%AUTOPOL_PATH%" (
-    echo ERROR: autoPOL.exe not found at: "%AUTOPOL_PATH%"
+    echo ERROR: autoPOL executable not found at: "%AUTOPOL_PATH%"
     echo Please update the autopol_path in %CONFIG_FILE%
-    call :LogMessage "ERROR: autoPOL.exe not found"
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    pause
     exit /b 1
-) else (
-    call :LogMessage "autoPOL.exe found successfully"
-    echo autoPOL.exe found at: "%AUTOPOL_PATH%"
 )
 
-REM Check if bin files directory exists
-call :LogMessage "Checking if bin files directory exists"
+call :LogMessage "autoPOL path verified"
+
 if not exist "%BIN_FILES_PATH%" (
-    echo ERROR: Bin files directory not found at: "%BIN_FILES_PATH%"
+    echo ERROR: Bin files directory not found: "%BIN_FILES_PATH%"
     echo Please update the bin_files_path in %CONFIG_FILE%
-    call :LogMessage "ERROR: Bin files directory not found"
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    pause
     exit /b 1
-) else (
-    call :LogMessage "Bin files directory found successfully"
-    echo Bin files directory found at: "%BIN_FILES_PATH%"
 )
 
-REM Check if destination directory exists
-call :LogMessage "Checking destination directory for login_w.bin"
-for %%F in ("%LOGIN_BIN_DEST%") do set "DEST_DIR=%%~dpF"
-if not exist "%DEST_DIR%" (
-    echo ERROR: Destination directory not found: "%DEST_DIR%"
+call :LogMessage "Bin files path verified"
+
+REM Check if the destination login_w.bin directory exists
+for %%f in ("%LOGIN_BIN_DEST%") do set "LOGIN_BIN_DIR=%%~dpf"
+if not exist "%LOGIN_BIN_DIR%" (
+    echo ERROR: Login bin destination directory not found: "%LOGIN_BIN_DIR%"
     echo Please check the login_bin_dest path in %CONFIG_FILE%
-    call :LogMessage "ERROR: Destination directory not found"
-    echo.
-    echo Press any key to exit...
-    pause >nul
+    pause
     exit /b 1
-) else (
-    call :LogMessage "Destination directory found successfully"
-    echo Destination directory found: "%DEST_DIR%"
 )
 
+call :LogMessage "Login bin destination path verified"
+
+echo Configuration loaded successfully.
+echo autoPOL Path: %AUTOPOL_PATH%
+echo Bin Files Path: %BIN_FILES_PATH%
+echo Login Bin Destination: %LOGIN_BIN_DEST%
+echo.
+
+call :LogMessage "Starting character detection and launch process"
+
+REM Check which characters are running
+call :CheckRunningCharacters
+
+REM Check if there are any characters to launch
+if !PENDING_COUNT! equ 0 (
+    echo All characters are already running!
+    call :LogMessage "All characters already running - script complete"
+    echo.
+    echo All operations complete!
+    call :LogMessage "Script completed successfully"
+    pause
+    exit /b 0
+)
+
+REM Group pending characters by bin file
+call :GroupCharactersByBin
+
+REM Launch character groups
+call :LaunchCharacterGroups
+
+echo.
+echo All operations complete!
+call :LogMessage "Script completed successfully"
+pause
 exit /b 0
 
-:LogMessage
-if not defined LOG_FILE set "LOG_FILE=%~dp0ffxi-login.log"
-echo %~1 >> "%LOG_FILE%"
-if "%DEBUG_MODE%"=="1" echo [DEBUG] %~1
-exit /b 0
-
+REM ================================
+REM Function: Check Running Characters
+REM ================================
 :CheckRunningCharacters
 call :LogMessage "Entering CheckRunningCharacters function"
+echo Checking which characters are already running...
+
 set "RUNNING_COUNT=0"
 set "PENDING_COUNT=0"
 set "RUNNING_CHARS="
@@ -246,12 +174,11 @@ tasklist /v /fi "imagename eq pol.exe" /fo csv > "%TEMP_FILE%" 2>nul
 
 call :LogMessage "Starting character loop"
 for %%i in (%CHAR_LIST%) do (
-    for /f "tokens=1,2,3 delims=:" %%a in ("%%i") do (
+    for /f "tokens=1,2 delims=:" %%a in ("%%i") do (
         set "CHAR_NAME=%%a"
         set "BIN_FILE=%%b"
-        set "CONFIG_FILE=%%c"
         
-        call :LogMessage "Checking character: !CHAR_NAME! (bin: !BIN_FILE!, config: !CONFIG_FILE!)"
+        call :LogMessage "Checking character: !CHAR_NAME! (bin: !BIN_FILE!)"
         
         REM Check if character is already running by looking for character name in window titles
         set "IS_RUNNING=0"
@@ -274,8 +201,8 @@ for %%i in (%CHAR_LIST%) do (
         ) else (
             set /a PENDING_COUNT+=1
             set "PENDING_CHARS=!PENDING_CHARS! %%i"
-            echo [PENDING] !CHAR_NAME! ^(using !BIN_FILE! and !CONFIG_FILE!^)
-            call :LogMessage "Marked !CHAR_NAME! as PENDING (using !BIN_FILE! and !CONFIG_FILE!)"
+            echo [PENDING] !CHAR_NAME! ^(using !BIN_FILE!^)
+            call :LogMessage "Marked !CHAR_NAME! as PENDING (using !BIN_FILE!)"
         )
     )
 )
@@ -283,36 +210,42 @@ for %%i in (%CHAR_LIST%) do (
 REM Clean up temporary file
 if exist "%TEMP_FILE%" del "%TEMP_FILE%"
 call :LogMessage "CheckRunningCharacters function complete"
+
+echo.
+echo Summary: %RUNNING_COUNT% running, %PENDING_COUNT% pending
+echo.
+
 exit /b 0
 
+REM ================================
+REM Function: Group Characters by Bin File
+REM ================================
 :GroupCharactersByBin
 call :LogMessage "Entering GroupCharactersByBin function"
+
 set "BIN_GROUPS="
 set "CURRENT_BIN="
-set "CURRENT_CONFIG="
 set "CURRENT_GROUP="
 
 call :LogMessage "Pending characters to group: !PENDING_CHARS!"
 
-REM Sort pending characters by bin file and config file
+REM Sort pending characters by bin file
 for %%i in (!PENDING_CHARS!) do (
     call :LogMessage "Raw pending character entry: %%i"
-    for /f "tokens=1,2,3 delims=:" %%a in ("%%i") do (
+    for /f "tokens=1,2 delims=:" %%a in ("%%i") do (
         set "CHAR_NAME=%%a"
         set "BIN_FILE=%%b"
-        set "CONFIG_FILE=%%c"
         
-        call :LogMessage "Processing character !CHAR_NAME! with bin !BIN_FILE! and config !CONFIG_FILE!"
+        call :LogMessage "Processing character !CHAR_NAME! with bin !BIN_FILE!"
         
         if "!CURRENT_BIN!" neq "!BIN_FILE!" (
             if "!CURRENT_GROUP!" neq "" (
-                set "BIN_GROUPS=!BIN_GROUPS!|!CURRENT_BIN!:!CURRENT_CONFIG!:!CURRENT_GROUP!"
-                call :LogMessage "Created group: !CURRENT_BIN!:!CURRENT_CONFIG!:!CURRENT_GROUP!"
+                set "BIN_GROUPS=!BIN_GROUPS!|!CURRENT_BIN!:!CURRENT_GROUP!"
+                call :LogMessage "Created group: !CURRENT_BIN!:!CURRENT_GROUP!"
             )
             set "CURRENT_BIN=!BIN_FILE!"
-            set "CURRENT_CONFIG=!CONFIG_FILE!"
             set "CURRENT_GROUP=!CHAR_NAME!"
-            call :LogMessage "Started new group with bin=!CURRENT_BIN!, config=!CURRENT_CONFIG!, first_char=!CURRENT_GROUP!"
+            call :LogMessage "Started new group with bin=!CURRENT_BIN!, first_char=!CURRENT_GROUP!"
         ) else (
             set "CURRENT_GROUP=!CURRENT_GROUP!,!CHAR_NAME!"
             call :LogMessage "Added !CHAR_NAME! to existing group, now: !CURRENT_GROUP!"
@@ -322,8 +255,8 @@ for %%i in (!PENDING_CHARS!) do (
 
 REM Add the last group
 if "!CURRENT_GROUP!" neq "" (
-    set "BIN_GROUPS=!BIN_GROUPS!|!CURRENT_BIN!:!CURRENT_CONFIG!:!CURRENT_GROUP!"
-    call :LogMessage "Added final group: !CURRENT_BIN!:!CURRENT_CONFIG!:!CURRENT_GROUP!"
+    set "BIN_GROUPS=!BIN_GROUPS!|!CURRENT_BIN!:!CURRENT_GROUP!"
+    call :LogMessage "Added final group: !CURRENT_BIN!:!CURRENT_GROUP!"
 )
 
 REM Log the final groups safely (avoid issues with special characters)
@@ -348,28 +281,29 @@ REM Log safely without using LogMessage function
 echo Groups after removing leading pipe: !GROUPS! >> "%LOG_FILE%"
 if "%DEBUG_MODE%"=="1" echo [DEBUG] Groups after removing leading pipe: !GROUPS!
 
-REM Simple approach - process groups one by one
-call :LogMessage "Starting group processing"
-
-:ProcessNextGroup
-if "!GROUPS!"=="" goto FinishedGroups
-
-REM Extract first group
-for /f "tokens=1* delims=|" %%a in ("!GROUPS!") do (
-    set "CURRENT_GROUP=%%a"
-    set "REMAINING_GROUPS=%%b"
+REM Process each group
+set "GROUP_COUNT=0"
+for %%G in ("!GROUPS:|=" "!") do (
+    set /a GROUP_COUNT+=1
+    set "GROUP=%%~G"
+    call :LogMessage "Processing group !GROUP_COUNT!: !GROUP!"
+    call :ProcessSingleGroup "!GROUP!"
+    
+    REM Wait between groups (except for the last one)
+    call :LogMessage "Checking if this is the last group"
+    set "REMAINING_GROUPS=!GROUPS!"
+    for /L %%i in (1,1,!GROUP_COUNT!) do (
+        for /f "tokens=1* delims=|" %%a in ("!REMAINING_GROUPS!") do (
+            set "REMAINING_GROUPS=%%b"
+        )
+    )
+    if "!REMAINING_GROUPS!" neq "" (
+        echo Waiting %BIN_SWAP_DELAY% seconds before next group...
+        call :LogMessage "Waiting %BIN_SWAP_DELAY% seconds before next group"
+        timeout /t %BIN_SWAP_DELAY% /nobreak >nul
+    )
 )
 
-call :LogMessage "Processing group: !CURRENT_GROUP!"
-
-if "!CURRENT_GROUP!" neq "" (
-    call :ProcessSingleGroup "!CURRENT_GROUP!"
-)
-
-set "GROUPS=!REMAINING_GROUPS!"
-goto ProcessNextGroup
-
-:FinishedGroups
 call :LogMessage "LaunchCharacterGroups function complete"
 exit /b 0
 
@@ -377,17 +311,16 @@ exit /b 0
 set "GROUP_ENTRY=%~1"
 call :LogMessage "Raw group entry: !GROUP_ENTRY!"
 
-for /f "tokens=1,2,3 delims=:" %%a in ("!GROUP_ENTRY!") do (
+for /f "tokens=1,2 delims=:" %%a in ("!GROUP_ENTRY!") do (
     set "BIN_FILE=%%a"
-    set "CONFIG_FILE=%%b"
-    set "CHAR_GROUP=%%c"
+    set "CHAR_GROUP=%%b"
     
-    call :LogMessage "Parsed - BIN_FILE=!BIN_FILE!, CONFIG_FILE=!CONFIG_FILE!, CHAR_GROUP=!CHAR_GROUP!"
+    call :LogMessage "Parsed - BIN_FILE=!BIN_FILE!, CHAR_GROUP=!CHAR_GROUP!"
     
     echo ===================================================================
-    echo Switching to bin file: !BIN_FILE! and config: !CONFIG_FILE!
+    echo Switching to bin file: !BIN_FILE!
     echo ===================================================================
-    call :LogMessage "Processing bin file: !BIN_FILE!, config: !CONFIG_FILE!, with characters: !CHAR_GROUP!"
+    call :LogMessage "Processing bin file: !BIN_FILE!, with characters: !CHAR_GROUP!"
     
     REM Copy the appropriate bin file
     if exist "%BIN_FILES_PATH%\!BIN_FILE!" (
@@ -406,25 +339,6 @@ for /f "tokens=1,2,3 delims=:" %%a in ("!GROUP_ENTRY!") do (
         echo ERROR: Bin file not found: "%BIN_FILES_PATH%\!BIN_FILE!"
         call :LogMessage "ERROR: Bin file not found"
         goto :EndProcessSingleGroup
-    )
-    
-    REM Copy the appropriate config file BEFORE launching characters
-    if "!CONFIG_FILE!" neq "" (
-        if exist "%CONFIG_FILES_PATH%\!CONFIG_FILE!" (
-            echo Copying !CONFIG_FILE! to config.json...
-            call :LogMessage "Copying config file to destination"
-            copy "%CONFIG_FILES_PATH%\!CONFIG_FILE!" "%WINDOWER_CONFIG_DEST%" >nul
-            if !errorlevel! equ 0 (
-                echo Successfully copied config file.
-                call :LogMessage "Successfully copied config file"
-            ) else (
-                echo ERROR: Failed to copy config file!
-                call :LogMessage "ERROR: Failed to copy config file - errorlevel !errorlevel!"
-            )
-        ) else (
-            echo ERROR: Config file not found: "%CONFIG_FILES_PATH%\!CONFIG_FILE!"
-            call :LogMessage "ERROR: Config file not found"
-        )
     )
     
     echo.
@@ -464,6 +378,11 @@ for /f "tokens=1,2,3 delims=:" %%a in ("!GROUP_ENTRY!") do (
 )
 exit /b 0
 
-REM ===================================================================
-REM END OF SCRIPT
-REM ===================================================================
+REM ================================
+REM Function: Log Message
+REM ================================
+:LogMessage
+set "MESSAGE=%~1"
+echo [%date% %time%] %MESSAGE% >> "%LOG_FILE%"
+if "%DEBUG_MODE%"=="1" echo [DEBUG] %MESSAGE%
+exit /b 0
