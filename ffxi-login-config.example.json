@@ -5,7 +5,7 @@
     "login_bin_dest": "C:\\Users\\username\\Documents\\Games\\Steam\\steamapps\\common\\FFXINA\\SquareEnix\\PlayOnlineViewer\\usr\\all\\login_w.bin"
   },
   "timing": {
-    "launch_delay": 40,
+    "launch_delay": 55,
     "bin_swap_delay": 5
   },
   "logging": {
